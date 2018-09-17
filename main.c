@@ -28,7 +28,7 @@ int main(void){
 	TIM2->CCER &= ~0x1; // Turn off output enable for capture input
 											// Ensures changes will take effect when capture input is reenabled
 	
-	// Set up CCMRx
+	// Set up CCMRx please
 	
 	UART2_Init();
 		
