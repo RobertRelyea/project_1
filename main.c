@@ -17,39 +17,41 @@ int main(void){
 	char rxByte;
 	
 	System_Clock_Init(); // Switch System Clock = 80 MHz
+	UART2_Init();
 	
-	LED_Init();
+	RCC->AHB2ENR |= RCC_AHB2ENR_GPIOAEN;
 	
-	init_pa0(); // Init PA0 to alternate function mode
-	monitor_pa0();
+	GPIOA->MODER &= 0xFFFFFFFF;				  // Clear port A mode
+	GPIOA->MODER |= 0x2;								// Enable alternate function mode (binary 10) for PA0
+	GPIOA->AFR[0] |= 0x01;							// Sets AF1 as the alternate function for PA0
 	
-	RCC->APB1ENR1 |= 0x0001; // Enable TIM2 in the APB1 clock enable register 1
+	RCC->APB1ENR1 |= RCC_APB1ENR1_TIM2EN; // Enable TIM2 in the APB1 clock enable register 1
 	
-	TIM2->PSC = 0x9C40; // Set prescaler for TIM2 to 40000
+	//TIM2->PSC = 0x10; // Set prescaler for TIM2 to 40000
 										 // Results in a sampling frequency of 2 KHz
 
-	TIM2->EGR |=0x1; // Trigger an update event for timer 2
+	TIM2->PSC = 80;    // Set prescaler value for TIM2
+	TIM2->EGR |= TIM_EGR_UG; 	  // Trigger an update event for timer 2
 	
-	TIM2->CCER &= ~0x1; // Turn off output enable for capture input
+	TIM2->CCER &= ~0xFFFFFFFF;
+	//TIM2->CCER &= ~0x1; // Turn off output enable for capture input
 											// Ensures changes will take effect when capture input is reenabled
+	//TIM2->CCER &= ~0xE; // Set our capture trigger to rising edges
 	
 	// Set up CCMRx
-	TIM2->CCMR1 |= 0x1; // Set CC1 channel as input, IC1 mapped on TI2
-	TIM2->CCMR1 &= ~0xF0; // Clear input capture 1 filter
-	
-	TIM2->CCER &= ~0xD; // Set our capture trigger to rising edges
-	
-	TIM2->CCER |= 0x1; // Turn on output enable for capture input
-	
-	
-	
-	TIM2->CR1 |= 0x1; // Enable input capture
-	
-	UART2_Init();
+	TIM2->CCMR1 |= 0x01; // Set CC1 channel as input, IC1 mapped on TI1
+	//TIM2->CCMR1 &= ~0xF0; // Clear input capture 1 filter
+	//TIM2->CCMR1 &= ~(TIM_CCMR1_IC1PSC); // Set capture prescaler to zero
+			
+	TIM2->CCER |= TIM_CCER_CC1E; // Turn on output enable for capture input
+	TIM2->CR1 = 0x1; // Enable input capture
 		
 	while (1)
 	{	
-		if (TIM2->SR & 0X2) // Capture 1 interrupt flag
+
+//		USART_Write(USART2,(uint8_t *)badCount, strlen((char *)badCount)); //move to a new line
+//		USART_Write(USART2,(uint8_t *)newline, strlen(newline)); //move to a new line
+		if ((TIM2->SR & 0x2) != 0) // Capture 1 interrupt flag
 		{
 			// Read current TIM2 channel 1 counter value
 			unsigned int count = TIM2->CCR1;
