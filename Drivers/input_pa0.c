@@ -9,13 +9,12 @@
 void init_pa0( void )
 {
 	RCC->AHB2ENR |= RCC_AHB2ENR_GPIOAEN ;		// enable clock for A group of GPIO
-	//GPIOA->MODER &= ~3 ;										// clear out bits 0 and 1 for PA0
-																					// PA0 is now in input mode
-	
-	GPIOA->MODER &= 0xFFFFFFFF;				  // Clear port A mode
-	GPIOA->MODER |= 0x2;								// Enable alternate function mode (binary 10) for PA0
-	GPIOA->AFR[0] &= ~0x0F;							// Clear PA0 field in AFRL
-	GPIOA->AFR[0] |= 0x01;							// Sets AF1 as the alternate function for PA0
+	GPIOA->MODER &= ~0xFF;										  // clear out bits 0 and 1 for PA0
+	// Enable alternate function mode (binary 10) for PA1
+	GPIOA->MODER |= 0xA;								    
+	GPIOA->AFR[0] &= ~0xF0;							    // Clear PA1 field in AFRL
+	GPIOA->AFR[0] |= 0x10;							    // Sets AF1 as the alternate function for PA1
+																					// TIM2_CH2
 }
 
 // Read the state of PA0 (high or low)
