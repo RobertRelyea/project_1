@@ -19,23 +19,33 @@ int post(void)
 	// Start timer
 	timer_start();
 	
-	// Flag for capture event received
-	int event_captured = 0;
+	
 	uint32_t time = timer_count();
+	
+	// Store times for two pulses
+	uint32_t pulse_one = 0;
+	uint32_t pulse_two = 0;
+	
 	// Run for 100 milliseconds
 	while( (timer_count() - time) < 100000)
 	{
-		//sprintf((char *)buffer, "Timer Count= %d\n\r", timer_count() - time);
-  	//USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+		// Check for timer event (rising edge seen on pa1)
 		if (timer_event() & 0xF)
 		{
-			event_captured = 1;
+			if (pulse_one == 0)
+				pulse_one = timer_capture();
+			else if (pulse_two == 0)
+				pulse_two = timer_capture();
 		}
 	}
 	
 	timer_stop();
-	
-	return event_captured;
+
+	// Ensure we have seen a complete pulse (two rising edges) within 100ms
+	//if (events_captured > 2)
+	if ((pulse_two - pulse_one < 100000) && (pulse_two != 0))
+		return 1;
+	return 0;
 	
 }
 
@@ -44,7 +54,7 @@ int getInt(void)
 	char rxByte;
 	
 	in_buffer_index = 0;
-	while((rxByte != '\r') && (in_buffer_index < BufferSize - 1))
+	while((rxByte != '\r') && (in_buffer_index < BufferSize - 2))
 	{
 		rxByte = USART_Read(USART2); //Read the input and store it into rxByte
 		if((rxByte != '\r') && (rxByte >= '0') && (rxByte <= '9'))
@@ -143,7 +153,7 @@ int main(void)
 			// Read current TIM2 channel 2 counter value
 			uint32_t prev_count = timer_capture();
 			
-			while (reading_num < 1001)
+			while (reading_num < 1000)
 			{	
 				// Wait for timer_event
 				while((timer_event() & 0xF) == 0)
