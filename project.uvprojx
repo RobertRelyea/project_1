@@ -417,14 +417,24 @@
               <FilePath>.\Drivers\UART.c</FilePath>
             </File>
             <File>
-              <FileName>input_pa0.c</FileName>
+              <FileName>input_pa1.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Drivers\input_pa0.c</FilePath>
+              <FilePath>.\Drivers\input_pa1.c</FilePath>
             </File>
             <File>
-              <FileName>input_pa0.h</FileName>
+              <FileName>input_pa1.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\Drivers\input_pa0.h</FilePath>
+              <FilePath>.\Drivers\input_pa1.h</FilePath>
+            </File>
+            <File>
+              <FileName>timer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Drivers\timer.c</FilePath>
+            </File>
+            <File>
+              <FileName>timer.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Drivers\timer.h</FilePath>
             </File>
           </Files>
         </Group>

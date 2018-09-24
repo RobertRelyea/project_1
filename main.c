@@ -1,111 +1,184 @@
 #include "stm32l476xx.h"
 #include "Drivers/SysClock.h"
 #include "Drivers/UART.h"
-#include "Drivers/LED.h"
-#include "Drivers/input_pa0.h"
+#include "Drivers/timer.h"
 
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 
 char RxComByte = 0;
+uint8_t inBuffer[BufferSize];
 uint8_t buffer[BufferSize];
-char goodCount[] = "Count > 0";
-char badCount[] = "Count <= 0";
-char newline[]="\r\n";
 int buffer_index=0;
+int in_buffer_index = 0;
 
-void timer_init()
+// Power On Self Test
+int post(void)
 {
-	init_pa0();
-
-	// Enable TIM2 in the APB1 clock enable register 1
-	RCC->APB1ENR1 |= RCC_APB1ENR1_TIM2EN; 
+	// Start timer
+	timer_start();
 	
-	TIM2->PSC = 80;    // Set prescaler value for TIM2
-	TIM2->EGR |= TIM_EGR_UG; 	  // Trigger an update event for timer 2
+	// Flag for capture event received
+	int event_captured = 0;
+	uint32_t time = timer_count();
+	// Run for 100 milliseconds
+	while( (timer_count() - time) < 100000)
+	{
+		//sprintf((char *)buffer, "Timer Count= %d\n\r", timer_count() - time);
+  	//USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+		if (timer_event() & 0xF)
+		{
+			event_captured = 1;
+		}
+	}
 	
-	TIM2->CCER &= ~(0xFFFFFFFF);
+	timer_stop();
 	
-	// Set up CCMRx
-	TIM2->CCMR1 |= 0x0100; // Set CC2 channel as input, IC2 mapped on TI2
+	return event_captured;
 	
-	TIM2->CCER |= TIM_CCER_CC2E; // Turn on output enable for capture input
 }
 
-void timer_start()
+int getInt(void)
 {
-	TIM2->CR1 = 0x1;
+	char rxByte;
+	
+	in_buffer_index = 0;
+	while((rxByte != '\r') && (in_buffer_index < BufferSize - 1))
+	{
+		rxByte = USART_Read(USART2); //Read the input and store it into rxByte
+		if((rxByte != '\r') && (rxByte >= '0') && (rxByte <= '9'))
+		{
+			USART_Write(USART2, (uint8_t *)&rxByte, 1);
+			inBuffer[in_buffer_index] = rxByte;
+			in_buffer_index++;
+		}
+	}
+	inBuffer[in_buffer_index] = '\0';
+	
+	return atoi((char *)inBuffer);
 }
 
-void timer_stop()
+char getChar(void)
 {
-	TIM2->CR1 = 0x0;
-}
-
-uint32_t timer_count()
-{
-	return TIM2->CCR2; // Timer 2 Channel 2
-}
-
-uint32_t timer_event()
-{
-	return TIM2->SR & 0x4;
+	char rxByte;
+	rxByte = USART_Read(USART2); //Read the input and store it into rxByte
+	USART_Write(USART2, (uint8_t *)&rxByte, 1);
+	return rxByte;
 }
 
 int main(void)
 {
-	char rxByte;
-	
 	System_Clock_Init(); // Switch System Clock = 80 MHz
 	UART2_Init();
 	timer_init();
 
-	//uint32_t prev_count = 0;
-	uint32_t readings[101];
-	uint32_t reading_num = 0;
+	uint32_t min_bound = 950;
 	
-	
-	sprintf((char *)buffer, "Starting...");
-		
-	USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer)); //move to a new line
-	USART_Write(USART2,(uint8_t *)newline, strlen(newline)); //move to a new line
-
-	
-	timer_start();
-	while (reading_num < 101)
-	{	
-		// Read current TIM2 channel 2 counter value
-		while((timer_event() & 0xF) == 0)
-		{}
-   	uint32_t prev_count = timer_count();
-			
-		while((timer_event() & 0xF) == 0)
-		{}
-		uint32_t count = timer_count();
-		
-		readings[reading_num] = count - prev_count;
-		reading_num++;
-		
-		//timer_stop();
-		
-		//sprintf((char *)buffer, "CCR2 Value = %d", count);
-		
-		//USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer)); //move to a new line
-		//USART_Write(USART2,(uint8_t *)newline, strlen(newline)); //move to a new line	
-	}
-	
-	timer_stop();
-	uint32_t sum = 0;
-	
-	for(uint32_t i = 0; i < 101; ++i)
+	int post_success = 0;
+	while(post_success == 0)
 	{
-		sum += readings[i];
+		sprintf((char *)buffer, "\r\nStarting POST...\r\n");
+  	USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+		post_success = post();
+		if (post_success != 1)
+		{
+			sprintf((char *)buffer, "POST failed, retry? (Y/N)\r\n");
+			USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+			
+			char reply = getChar();
+			if(reply != 'y' && reply != 'Y')
+				break;
+		}
 	}
-	
-	sprintf((char *)buffer, "CCR2 Avg. Count = %d", sum / 101);
+	if(post_success)
+	{
+		sprintf((char *)buffer, "POST success!\r\n");
+		USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
 		
-	USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer)); //move to a new line
-	USART_Write(USART2,(uint8_t *)newline, strlen(newline)); //move to a new line
+		while(1)
+		{
+			uint32_t buckets[101] = {0};
+			uint32_t bucket_num = 0;
+			uint32_t reading_num = 0;
+			// Tell the user what the current bounds are
+			sprintf((char *)buffer, "The minimum bound is %d and the maximum bound is %d!\r\n", min_bound, min_bound +100);
+			USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+			
+			// Prompt the user to accept or change bounds
+			sprintf((char *)buffer, "Do you accept the bounds? (Y/N)\r\n");
+			USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+			
+			// Receive user accept/decline
+			char input = getChar();
+			if(input  != 'y' && input !='Y')
+			{ 
+				// If declined, receive integer from user
+				int lowerbound = 0;
+				// Ensure integer is within max bounds
+				while(lowerbound <50 || lowerbound > 9850)
+				{
+					sprintf((char *)buffer, "\n\rEnter the lower bound in the range of 50 to 9950\r\n");
+					USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+					lowerbound =	getInt();
+					int upperbound= lowerbound + 100;		
+				}
+				
+				sprintf((char *)buffer, "\n\rAccepted new lower bound.\r\n");
+				USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+				// Change min_bound
+				min_bound = lowerbound;
+			
+			}
+			
+			// Begin Measurements
+			sprintf((char *)buffer, "\n\rBeginning measurements...\r\n");
+			USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+			
+			timer_start();
+			// First Measurement
+			// Wait for timer_event
+			while((timer_event() & 0xF) == 0)
+			{}
+			// Read current TIM2 channel 2 counter value
+			uint32_t prev_count = timer_capture();
+			
+			while (reading_num < 1001)
+			{	
+				// Wait for timer_event
+				while((timer_event() & 0xF) == 0)
+				{}
+				// Read current TIM2 channel 2 counter value
+				uint32_t count = timer_capture();
+				
+				// Pulse width in microseconds
+				uint32_t pulse = count - prev_count;
+					
+				prev_count = count;
+					
+				if ((pulse > min_bound) && (pulse < min_bound + 100))
+				{
+					// Increment bucket for corresponding pulse width
+					buckets[pulse - min_bound]++;
+				}
+				reading_num++;
+			}
+			
+			timer_stop();
+			
+			sprintf((char *)buffer, "\n\rMeasurements complete!\r\n");
+			USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
 
+			for(int i = 0; i < 101; ++i)
+			{
+				uint32_t bucket = buckets[i];
+				if(bucket > 0)
+				{
+					sprintf((char *)buffer, "%d\t%d\n\r", i + min_bound, bucket);
+					USART_Write(USART2,(uint8_t *)buffer, strlen((char *)buffer));
+				}
+			}
+		}
+	}
 }
 
